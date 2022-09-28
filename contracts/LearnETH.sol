@@ -13,7 +13,6 @@
     */
 
     // SPDX-License-Identifier: GPL-3.0-or-later
-    import "hardhat/console.sol";
 
     pragma solidity >=0.4.22 <0.9.0;
 
@@ -57,6 +56,7 @@
         mapping(address => bool) public admin;
         mapping(address => bool) public mainAdmin;
         mapping(address => uint) public availableBalance;
+        uint public refundTime = 60*60*24*30;
         uint public transactionId;
         uint public affiliateId;
         address public splitter;
@@ -124,18 +124,15 @@
 
         function giveTree(address _affiliate,uint amount,uint _transactionId) internal returns (bool result){
             result=false;
-            console.log("checkSubscription(_affiliate : ",checkSubscription(_affiliate));
             if((checkSubscription(_affiliate)==false)||(blocked[affiliates[_affiliate].wallet]==true)){
                 paidAmountInTransaction[_transactionId][address(this)]=amount*3/12;
                 transactionNumber[transactionId].paidLength=transactionNumber[transactionId].paidLength+1;
                 paidInTransaction[_transactionId][address(this)]=address(this);
             }else{
             paidAmountInTransaction[_transactionId][_affiliate]=amount*3/12;
-            console.log("paidAmountInTransaction[_transactionId].push(amount*3/12) : ",(amount*3/12));
             paidInTransaction[_transactionId][_affiliate]=_affiliate;    
             transactionNumber[transactionId].paidLength=transactionNumber[transactionId].paidLength+1;
 
-            console.log("paidInTransaction[_transactionId].push(_affiliate) : ",(_affiliate));
 
             affiliates[_affiliate].accumulated=affiliates[_affiliate].accumulated+amount*3/12;
 
@@ -143,9 +140,8 @@
             address _linker=affiliates[_affiliate].wallet;
             for (uint z=0; z< 9; z++){
             address tested=affiliates[_linker].linker;
-            console.log("tested : ",(tested));
-            console.log("affiliates[tested].broughtDirectly : ",(affiliates[tested].broughtDirectly));
-            if((checkSubscription(tested)==false)||(affiliates[tested].broughtDirectly==0)||(blocked[tested]==true)||(affiliates[tested].lastSale-block.timestamp<60*60*24*30)){
+
+            if((checkSubscription(tested)==false)||(affiliates[tested].broughtDirectly==0)||(blocked[tested]==true)||(affiliates[tested].lastSale-block.timestamp<refundTime)){
             paidAmountInTransaction[_transactionId][address(this)]=amount*1/12;
             transactionNumber[transactionId].paidLength=transactionNumber[transactionId].paidLength+1;
 
@@ -200,7 +196,7 @@
 
         function refund(uint _transactionID) public returns (bool result){
             result=false;
-            require(block.timestamp<=60*60*24*30+transactionNumber[_transactionID]._timeStamp,"After 30 days transaction cannot be refunded");
+            require(block.timestamp<=refundTime+transactionNumber[_transactionID]._timeStamp,"After 30 days transaction cannot be refunded");
             require(transactionNumber[_transactionID].buyer== msg.sender,"User is not the original buyer");
             require(transactionNumber[_transactionID].closed==false,"Transaction is closed");
             require(_transactionID<=transactionId,"Not such transaction");
@@ -218,7 +214,7 @@
 
     function withdrawToBalance(uint _transactionID) public returns (bool result){
             result=false;
-            require(block.timestamp>60*60*24*30+transactionNumber[_transactionID]._timeStamp,"Transaction is in refund period");
+            require(block.timestamp>refundTime+transactionNumber[_transactionID]._timeStamp,"Transaction is in refund period");
             require(transactionNumber[_transactionID].closed== false,"Transaction is refunded");
             require(_transactionID<=transactionId,"Not such transaction");
             uint withdrawAmount=0;
@@ -243,7 +239,7 @@
         }
             function withdrawTeacher(uint _transactionID) public returns (bool result){
             result=false;
-            require(block.timestamp>60*60*24*30+transactionNumber[_transactionID]._timeStamp,"Transaction is in refund period");
+            require(block.timestamp>refundTime+transactionNumber[_transactionID]._timeStamp,"Transaction is in refund period");
             require(transactionNumber[_transactionID].closed== false,"Transaction is refunded");
             require(_transactionID<=transactionId,"Not such transaction");
             require(transactionNumber[transactionId].teacher==msg.sender,"User is not the teacher of this transaction");
@@ -262,7 +258,7 @@
         }
 
         function checkSubscription(address user) public view returns (bool){
-            if(block.timestamp-affiliates[user].lastPaid<60*60*24*30*affiliates[user].monthsPaid)
+            if(block.timestamp-affiliates[user].lastPaid<refundTime*affiliates[user].monthsPaid)
             {
                 return true;
             }
@@ -273,7 +269,7 @@
         function withdrawSplitter(uint _transactionID) public returns (bool result){
             result=false;
             require(_transactionID<=transactionId,"Not such transaction");
-            require(block.timestamp>60*60*24*30+transactionNumber[_transactionID]._timeStamp,"Transaction is in refund period");
+            require(block.timestamp>refundTime+transactionNumber[_transactionID]._timeStamp,"Transaction is in refund period");
             require(transactionNumber[_transactionID].closed== false,"Transaction is refunded");
             if(paidAmountInTransaction[_transactionID][address(this)]>0){
             paidAmountInTransaction[_transactionID][address(this)]=0;
@@ -284,7 +280,7 @@
 
         function checkWithdraw(uint _transactionID) public view returns (uint result){
             require(_transactionID<=transactionId,"Not such transaction");
-            if(block.timestamp>60*60*24*30+transactionNumber[_transactionID]._timeStamp){
+            if(block.timestamp>refundTime+transactionNumber[_transactionID]._timeStamp){
             if(transactionNumber[_transactionID].closed== false){
             result = paidAmountInTransaction[_transactionID][msg.sender];
             }
@@ -293,7 +289,7 @@
         }
         function checkWithdrawSplitter(uint _transactionID) public view returns (uint result){
             require(_transactionID<=transactionId,"Not such transaction");
-            if(block.timestamp>60*60*24*30+transactionNumber[_transactionID]._timeStamp){
+            if(block.timestamp>refundTime+transactionNumber[_transactionID]._timeStamp){
             if(transactionNumber[_transactionID].closed== false){
             result=0;
             if(paidAmountInTransaction[_transactionID][address(this)]>0){
@@ -309,8 +305,8 @@
             require(msg.value>=_months*_subscriptionPrice,"Not enough wei sent to renew");
             affiliates[msg.sender].lastPaid=block.timestamp;
             affiliates[msg.sender].subScriptionPrice=_subscriptionPrice;
-            if((60*60*24*30*affiliates[msg.sender].monthsPaid)>(block.timestamp-affiliates[msg.sender].lastPaid)){
-            affiliates[msg.sender].monthsPaid=(60*60*24*30*affiliates[msg.sender].monthsPaid)/(block.timestamp-affiliates[msg.sender].lastPaid)+_months;
+            if((refundTime*affiliates[msg.sender].monthsPaid)>(block.timestamp-affiliates[msg.sender].lastPaid)){
+            affiliates[msg.sender].monthsPaid=(refundTime*affiliates[msg.sender].monthsPaid)/(block.timestamp-affiliates[msg.sender].lastPaid)+_months;
             }else{
                 affiliates[msg.sender].monthsPaid=_months;
             }
